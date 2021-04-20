@@ -8,6 +8,7 @@ import { useRecoilValue } from 'recoil';
 import { userSelector } from '@src/atoms/user';
 import { Room, User } from '@src/types';
 import UserVideo from '@src/components/common/UserVideo';
+import Loading from '@src/components/common/Loading';
 
 const socket = io();
 
@@ -268,13 +269,17 @@ const ChatDetail = () => {
         </Article>
         
         {userIds.map((userId) => {
-          console.log(userId);
           const user = roomData.users.filter(({id}) => id === userId)[0];
+          const {peer, state} = peerMap[userId];
           
           return (
             <Article key={userId}>
-              <UserVideo user={user} peer={peerMap[userId].peer}>
-
+              <UserVideo user={user} peer={peer}>
+                {(state === 'connect' || state === 'idle') && (
+                  <Dimd>
+                    <Loading />
+                  </Dimd>
+                )}
               </UserVideo>
             </Article>
           )
@@ -296,7 +301,7 @@ const Dimd = styled.div`
   display: flex;
   width: 100%;
   height: calc(100% - 50px);
-  background-color: rgba(0, 0, 0, 0.8);
+  background-color: rgba(0, 0, 0, 0.5);
   color: #fff;
   align-items: center;
   text-align: center;
