@@ -35,7 +35,7 @@ type CandidateMessage = MessagePayload<MessageEnum.CANDIDATE, CandidatePayload>;
 type UserPeerMap = {
   [key: string]: {
     peer: RTCPeerConnection,
-    state: 'idle' | 'connect' | 'connected' | 'failed'
+    state: 'idle' | 'connect' | 'connected'
   };
 }
 
@@ -47,12 +47,19 @@ const DEFAULT_ROOM = {
   password: ''
 }
 
+const OFFER_OPTIONS: RTCOfferOptions = {
+  iceRestart: false,
+  offerToReceiveAudio: true,
+  offerToReceiveVideo: true,
+  voiceActivityDetection: true
+}
+
 const ChatDetail = () => {
   const user = useRecoilValue(userSelector);
-  const { room: roomId } = useParams<{room: string}>();
-  const [room, setRoom] = React.useState<Room>(DEFAULT_ROOM);
+  const [roomData, setRoomData] = React.useState<Room>(DEFAULT_ROOM);
   const [loading, setLoading] = React.useState<boolean>(false)
   const [peerMap, setPeerMap] = React.useState<UserPeerMap>({});
+  const { room: roomId } = useParams<{room: string}>();
   
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const userMediaTracks: React.MutableRefObject<MediaStreamTrack[]> = React.useRef([]);
@@ -60,7 +67,7 @@ const ChatDetail = () => {
   const createOffer = React.useCallback((userId: string) => {
     setPeerMap(prev => {
       const {peer} = prev[userId];
-      peer.createOffer({offerToReceiveVideo: true, iceRestart: true, voiceActivityDetection: true, offerToReceiveAudio: true})
+      peer.createOffer(OFFER_OPTIONS)
         .then((description) => {
           peer.setLocalDescription(description)
             .then(() => {
@@ -128,6 +135,62 @@ const ChatDetail = () => {
     })
   }, [setPeerMap]);
 
+  const getRoomData = React.useCallback((room: Room) => {
+    const peer = new RTCPeerConnection();
+    peer.onicecandidate = sendIceCandidate;
+    setRoomData(room);
+    setPeerMap(prev => ({
+      ...prev,
+      ...Object.fromEntries(
+        room.users.map(({id}) => {
+          const peer = new RTCPeerConnection();
+          peer.onicecandidate = sendIceCandidate;
+          userMediaTracks.current.forEach(track => peer.addTrack(track));
+          
+          return [
+            id, 
+            {
+              peer,
+              state: 'idle'
+            }
+          ]
+        })
+      )
+    }));
+    setLoading(false);
+  }, [setRoomData, setPeerMap, setLoading, sendIceCandidate, userMediaTracks]);
+
+  const joinUserHandler = React.useCallback((user: User) => {
+    const peer = new RTCPeerConnection();
+    peer.onicecandidate = sendIceCandidate;
+    userMediaTracks.current.forEach(track => peer.addTrack(track));
+    
+    setRoomData(prev => ({
+      ...prev,
+      users: [
+        ...prev.users,
+        user
+      ]
+    }));
+    setPeerMap(prev => ({
+      ...prev,
+      [user.id]: {
+        peer,
+        state: 'idle'
+      }
+    }));
+    createOffer(user.id);
+  }, [setRoomData, setPeerMap, createOffer, sendIceCandidate, userMediaTracks]);
+
+  const leaveUserHandler = React.useCallback((user: User) => {
+    setPeerMap(prev => {
+      const next = {...prev};
+      next[user.id].peer.close();
+      delete next[user.id];
+
+      return next;
+    })
+  }, [setPeerMap]);
 
   React.useEffect(() => {
     const onMessageHandler = (message: CandidateMessage | OfferMessage | AnswerMessage, meta: MessageMeta) => {
@@ -156,13 +219,20 @@ const ChatDetail = () => {
   }, [acceptOffer, acceptAnswer, acceptIceCandidate]);
 
   React.useEffect(() => {
-    socket.emit('joinRoom', roomId, user);
+    setLoading(true);
+    socket.on('roomDetail', getRoomData);
+    socket.on('joinUser', joinUserHandler);
+    socket.on('leaveUser', leaveUserHandler);
+
     return () => {
-      socket.emit('leaveRoom', roomId, user);
+      socket.off('roomDetail', getRoomData);
+      socket.off('joinUser', getRoomData);
+      socket.off('leaveUser', leaveUserHandler);
     }
-  }, [roomId, user]);
+  }, [getRoomData, joinUserHandler, leaveUserHandler, setLoading]);
 
   React.useLayoutEffect(() => {
+    socket.emit('joinRoom', roomId, user);
     navigator.mediaDevices.getUserMedia({video: true, audio: true})
       .then((mediaStream) => {
         videoRef.current!.srcObject = mediaStream;
@@ -173,66 +243,10 @@ const ChatDetail = () => {
       });
 
     return () => {
+      socket.emit('leaveRoom', roomId, user);
       userMediaTracks.current.forEach((track) => track.stop());
     }
   }, [roomId, user, videoRef, userMediaTracks]);
-
-  React.useEffect(() => {
-    const handleRoomDetail = (room: Room) => {
-      setRoom(room);
-      setLoading(false);
-      setPeerMap(prev => ({
-        ...prev,
-        ...Object.fromEntries(
-          room.users.map(({id}) => {
-            const peer = new RTCPeerConnection();
-            peer.onicecandidate = sendIceCandidate;
-            userMediaTracks.current.forEach(track => peer.addTrack(track));
-            
-            return [
-              id, 
-              {
-                peer,
-                state: 'idle'
-              }
-            ]
-          })
-        )
-      }))
-    }
-    const handleJoinUser = (user: User) => {
-      const peer = new RTCPeerConnection();
-      peer.onicecandidate = sendIceCandidate;
-      userMediaTracks.current.forEach(track => peer.addTrack(track));
-
-      setRoom(prev => ({
-        ...prev,
-        users: [
-          ...prev.users,
-          user
-        ]
-      }));
-      setPeerMap(prev => ({
-        ...prev,
-        [user.id]: {
-          peer,
-          state: 'idle'
-        }
-      }));
-      setTimeout(() => {
-        createOffer(user.id);
-      })
-    }
-
-    setLoading(true);
-    socket.on('roomDetail', handleRoomDetail);
-    socket.on('joinUser', handleJoinUser);
-
-    return () => {
-      socket.off('roomDetail', handleRoomDetail);
-      socket.off('joinUser', handleJoinUser);
-    }
-  }, [setRoom, setPeerMap, setLoading, sendIceCandidate, createOffer, userMediaTracks, roomId]);
 
   const userIds = React.useMemo(() => Object.keys(peerMap), [peerMap]);
 
@@ -241,9 +255,9 @@ const ChatDetail = () => {
       {!loading && (
         <>
           <Header>
-            <H1>{room.title}</H1>
-            {room.description && (
-              <P>{room.description}</P>
+            <H1>{roomData.title}</H1>
+            {roomData.description && (
+              <P>{roomData.description}</P>
             )}
           </Header>
         </>
@@ -254,7 +268,8 @@ const ChatDetail = () => {
         </Article>
         
         {userIds.map((userId) => {
-          const user = room.users.filter(({id}) => id === userId)[0];
+          console.log(userId);
+          const user = roomData.users.filter(({id}) => id === userId)[0];
           
           return (
             <Article key={userId}>
