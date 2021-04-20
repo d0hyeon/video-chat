@@ -13,10 +13,10 @@ const Detail = React.lazy(() => import('@src/pages/Detail'));
 const App: React.FC = () => {
   return (
     <RecoilRoot>
-      <Header />
-      <Layout>
-        <Global styles={globalCss} />
-        <BrowserRouter>
+      <BrowserRouter>
+        <Header />
+        <Layout>
+          <Global styles={globalCss} />
           <Switch>
             <React.Suspense fallback="">
               <main className="content">
@@ -25,8 +25,8 @@ const App: React.FC = () => {
               </main>
             </React.Suspense>
           </Switch>
-        </BrowserRouter>
-      </Layout>
+        </Layout>
+      </BrowserRouter>
     </RecoilRoot>
   );
 };
