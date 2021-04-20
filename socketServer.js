@@ -61,7 +61,7 @@ module.exports = (app) => {
       if(!roomsMap[roomId].users.find(({id}) => user.id === id)) {
         return;
       }
-      socket.broadcast.to(roomId).emit('leavedUser', user);
+      socket.broadcast.to(roomId).emit('leaveUser', user);
       socket.leave(roomId);
       roomsMap[roomId].users = roomsMap[roomId].users.filter(_user => _user.id !== user.id);
 
