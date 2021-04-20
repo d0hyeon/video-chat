@@ -23,9 +23,6 @@ module.exports = (app) => {
     socket.on('getRoomList', () => {
       socket.emit('roomList', Object.values(roomsMap));
     });
-    socket.on('getRoomDetail', (roomId) => {
-      socket.emit('roomDetail', roomsMap[roomId]);
-    });
 
     socket.on('createRoom', (_room) => {
       const room = {
@@ -43,6 +40,7 @@ module.exports = (app) => {
       }
       if(roomsMap[roomId].users.length < roomsMap[roomId].size) {
         socket.join(roomId);
+        socket.emit('roomDetail', roomsMap[roomId]);
         socket.broadcast.to(roomId).emit('joinUser', user);
         roomsMap[roomId].users = [
           ...roomsMap[roomId].users,
