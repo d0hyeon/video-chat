@@ -52,13 +52,13 @@ const ChatDetail = () => {
   const { room: roomId } = useParams<{room: string}>();
   const [room, setRoom] = React.useState<Room>(DEFAULT_ROOM);
   const [loading, setLoading] = React.useState<boolean>(false)
-  const [othersPeerMap, setOthersPeerMap] = React.useState<UserPeerMap>({});
+  const [peerMap, setPeerMap] = React.useState<UserPeerMap>({});
   
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const userMediaTracks: React.MutableRefObject<MediaStreamTrack[]> = React.useRef([]);
 
   const createOffer = React.useCallback((userId: string) => {
-    setOthersPeerMap(prev => {
+    setPeerMap(prev => {
       const {peer} = prev[userId];
       peer.createOffer({offerToReceiveVideo: true, iceRestart: true, voiceActivityDetection: true, offerToReceiveAudio: true})
         .then((description) => {
@@ -77,17 +77,17 @@ const ChatDetail = () => {
         }
       }
     })
-  }, [roomId, user, setOthersPeerMap]);
+  }, [roomId, user, setPeerMap]);
 
   const createAnswer = React.useCallback((userId: string) => {
-    const peerConnection = othersPeerMap[userId].peer;
+    const peerConnection = peerMap[userId].peer;
     peerConnection.createAnswer()
       .then(description => {
         peerConnection.setLocalDescription(description)
           .then(() => socket.emit('message', description, {roomId, userId, sender: user!.id}))
       });
     
-  }, [othersPeerMap, roomId, user]);
+  }, [peerMap, roomId, user]);
 
   const sendIceCandidate = React.useCallback((event: RTCPeerConnectionIceEvent) => {
     if(event.candidate) {
@@ -101,20 +101,20 @@ const ChatDetail = () => {
   }, [roomId, user]);
 
   const acceptOffer = React.useCallback((description, meta) => {
-    othersPeerMap[meta.sender].peer.setRemoteDescription(description)
+    peerMap[meta.sender].peer.setRemoteDescription(description)
       .then(() => {
         createAnswer(meta.sender);
       })
-  }, [othersPeerMap, createAnswer]);
+  }, [peerMap, createAnswer]);
 
   const acceptAnswer = React.useCallback((description, meta) => {
-    othersPeerMap[meta.sender].peer.setRemoteDescription(description);
-  }, [othersPeerMap]);
+    peerMap[meta.sender].peer.setRemoteDescription(description);
+  }, [peerMap]);
 
   const acceptIceCandidate = React.useCallback((candidate, meta) => {
     const remoteCandidate = new RTCIceCandidate(candidate);
     const userId = meta.sender;
-    setOthersPeerMap(prev => {
+    setPeerMap(prev => {
       const peerConnection = prev[userId].peer;
       peerConnection.addIceCandidate(remoteCandidate);
       console.log('test');
@@ -126,7 +126,7 @@ const ChatDetail = () => {
         }
       }
     })
-  }, [setOthersPeerMap]);
+  }, [setPeerMap]);
 
 
   React.useEffect(() => {
@@ -144,7 +144,7 @@ const ChatDetail = () => {
           acceptIceCandidate({
             sdpMLineIndex: message.label,
             candidate: message.candidate
-          }, meta as MessageMeta);
+          }, meta);
           break;
         }
       }
@@ -155,6 +155,13 @@ const ChatDetail = () => {
     }
   }, [acceptOffer, acceptAnswer, acceptIceCandidate]);
 
+  React.useEffect(() => {
+    socket.emit('joinRoom', roomId, user);
+    return () => {
+      socket.emit('leaveRoom', roomId, user);
+    }
+  }, [roomId, user]);
+
   React.useLayoutEffect(() => {
     navigator.mediaDevices.getUserMedia({video: true, audio: true})
       .then((mediaStream) => {
@@ -164,13 +171,17 @@ const ChatDetail = () => {
         });
         // 비디오 엘리먼트에 loadedmetadata 이벤트 발생
       });
-  }, [roomId, videoRef, userMediaTracks, user]);
+
+    return () => {
+      userMediaTracks.current.forEach((track) => track.stop());
+    }
+  }, [roomId, user, videoRef, userMediaTracks]);
 
   React.useEffect(() => {
     const handleRoomDetail = (room: Room) => {
       setRoom(room);
       setLoading(false);
-      setOthersPeerMap(prev => ({
+      setPeerMap(prev => ({
         ...prev,
         ...Object.fromEntries(
           room.users.map(({id}) => {
@@ -201,7 +212,7 @@ const ChatDetail = () => {
           user
         ]
       }));
-      setOthersPeerMap(prev => ({
+      setPeerMap(prev => ({
         ...prev,
         [user.id]: {
           peer,
@@ -214,7 +225,6 @@ const ChatDetail = () => {
     }
 
     setLoading(true);
-    socket.emit('getRoomDetail', roomId);
     socket.on('roomDetail', handleRoomDetail);
     socket.on('joinUser', handleJoinUser);
 
@@ -222,16 +232,9 @@ const ChatDetail = () => {
       socket.off('roomDetail', handleRoomDetail);
       socket.off('joinUser', handleJoinUser);
     }
-  }, [setRoom, setOthersPeerMap, setLoading, sendIceCandidate, createOffer, userMediaTracks, roomId]);
+  }, [setRoom, setPeerMap, setLoading, sendIceCandidate, createOffer, userMediaTracks, roomId]);
 
-  React.useEffect(() => {
-    socket.emit('joinRoom', roomId, user);
-    return () => {
-      socket.emit('leaveRoom', roomId, user);
-    }
-  }, [roomId, user]);
-
-  const userIds = React.useMemo(() => Object.keys(othersPeerMap), [othersPeerMap]);
+  const userIds = React.useMemo(() => Object.keys(peerMap), [peerMap]);
 
   return (
     <Layout>
@@ -255,7 +258,7 @@ const ChatDetail = () => {
           
           return (
             <Article key={userId}>
-              <UserVideo user={user} peer={othersPeerMap[userId].peer}>
+              <UserVideo user={user} peer={peerMap[userId].peer}>
 
               </UserVideo>
             </Article>
