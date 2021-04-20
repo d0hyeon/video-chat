@@ -2,18 +2,16 @@ import React from 'react';
 import styled from '@emotion/styled';
 import { css } from '@emotion/react';
 import { io } from "socket.io-client";
-import { Link, useHistory, useLocation } from 'react-router-dom';
-import { Button, Header, Layout, Section, Ul } from '@src/components/styles/common';
+import { Link } from 'react-router-dom';
+import { Button, Header, Layout, Section } from '@src/components/styles/common';
 import { H1, P } from '@src/components/styles/text';
 import { Room } from '@src/types';
 import RoomFormPopup from '@src/components/popup/RoomFormPopup';
+import Loading from '@src/components/common/Loading';
 
 const socket = io();
 
 const Chatting = () => {
-  const history = useHistory();
-  const { pathname } = useLocation();
-  const [inputValue, setInputValue] = React.useState<string>('');
   const [roomList, setRoomList] = React.useState<Room[]>([]);
   const [loading, setLoading] = React.useState<boolean>(false);
   const [openForm, setOpenForm] = React.useState<boolean>(false);
@@ -55,9 +53,21 @@ const Chatting = () => {
   const roomItemComp = React.useCallback((room: Room) => {
     return (
       <RoomInfo>
-        <strong>{room.title}</strong>
-        <p>{room.description}</p>
-        <small>[ {room.users.length} / {room.size} ]</small>
+        <RoomInfoBody>
+          <p>
+            <strong>{room.title}</strong>
+          </p>
+          <p>{room.description}</p>
+        </RoomInfoBody>
+        <RoomInfoNav>
+          <p>
+            {room.users[0].name} {room.users.length > 1 && `외 ${room.users.length -1}명`}
+          </p>
+          <p>
+            [ {room.users.length} / {room.size} ]
+          </p>
+        </RoomInfoNav>
+        
       </RoomInfo>
     )
   }, []);
@@ -72,17 +82,17 @@ const Chatting = () => {
         {(!roomList.length && !loading) 
           ? <EmptyText>방이 없습니다.</EmptyText> 
           : loading
-            ? 'loading...'
+            ? <Loading />
             : (
-              <Ul>
+              <GridList>
                 {roomList.map(room => (
-                  <Li key={room.id}>
+                  <div key={room.id}>
                     {room?.size > room?.users?.length ? (
                       <Link to={`/${room.id}`}>{roomItemComp(room)}</Link>
                     ) : roomItemComp(room)}
-                  </Li>
+                  </div>
                 ))}
-              </Ul>
+              </GridList>
             )
         }
       </Section>
@@ -112,20 +122,45 @@ const EmptyText = styled(P)`
   text-align: center;
 `;
 
-const Li = styled.li`
+const GridList = styled.div`
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 15px;
+
   a {
     display: block;
+    width: 100%;
   }
 `
 
-const RoomInfo = styled.div`
-  width: 100%;
-  position: relative;
+const RoomInfoBody = styled.div`
+  padding: 20px 25px;
+  text-align: left;
+
+  p ~ p {
+    margin-top: 10px;
+  }
+`
+
+const RoomInfoNav = styled.div`
   display: flex;
+  padding: 10px 20px;
+  border-top: 1px solid #ddd;
   align-items: center;
+  justify-content: space-between;
+
+  p ~ p {
+    text-align: right;
+  }
+`;
+
+const RoomInfo = styled.div`
+  position: relative;
+  width: 100%;
+  border: 1px solid #ddd;
+  
 
   strong {
-    margin-right: 10px;
     color: #333;
     font-size: 16px;
     font-weight: bold;
@@ -133,7 +168,6 @@ const RoomInfo = styled.div`
   p {
     font-size: 14px;
     color: #666;
-
   }
   small {
     position: absolute;
