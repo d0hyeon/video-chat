@@ -53,19 +53,17 @@ const ChatDetail = () => {
   const [room, setRoom] = React.useState<Room>(DEFAULT_ROOM);
   const [loading, setLoading] = React.useState<boolean>(false)
   const [othersPeerMap, setOthersPeerMap] = React.useState<UserPeerMap>({});
-  const localVideoRef = React.useRef<HTMLVideoElement>(null);
-  const localMediaStreamRef: React.MutableRefObject<null | MediaStream> = React.useRef(null);
+  
+  const videoRef = React.useRef<HTMLVideoElement>(null);
+  const userMediaTracks: React.MutableRefObject<MediaStreamTrack[]> = React.useRef([]);
 
   const createOffer = React.useCallback((userId: string) => {
-    console.log('createOffer', userId);
     setOthersPeerMap(prev => {
       const {peer} = prev[userId];
-      console.log(peer);
-      peer.createOffer({offerToReceiveVideo: true})
+      peer.createOffer({offerToReceiveVideo: true, iceRestart: true, voiceActivityDetection: true, offerToReceiveAudio: true})
         .then((description) => {
           peer.setLocalDescription(description)
             .then(() => {
-              console.log('sendMessage');
               socket.emit('message', description, {roomId, userId: userId, sender: user!.id})
             })
             .catch(console.error);
@@ -82,7 +80,6 @@ const ChatDetail = () => {
   }, [roomId, user, setOthersPeerMap]);
 
   const createAnswer = React.useCallback((userId: string) => {
-    console.log('createAnswer', userId);
     const peerConnection = othersPeerMap[userId].peer;
     peerConnection.createAnswer()
       .then(description => {
@@ -104,8 +101,6 @@ const ChatDetail = () => {
   }, [roomId, user]);
 
   const acceptOffer = React.useCallback((description, meta) => {
-    console.log('acceptOffer', meta);
-    console.log(othersPeerMap);
     othersPeerMap[meta.sender].peer.setRemoteDescription(description)
       .then(() => {
         createAnswer(meta.sender);
@@ -113,7 +108,6 @@ const ChatDetail = () => {
   }, [othersPeerMap, createAnswer]);
 
   const acceptAnswer = React.useCallback((description, meta) => {
-    console.log('acceptAnswer', meta);
     othersPeerMap[meta.sender].peer.setRemoteDescription(description);
   }, [othersPeerMap]);
 
@@ -123,7 +117,7 @@ const ChatDetail = () => {
     setOthersPeerMap(prev => {
       const peerConnection = prev[userId].peer;
       peerConnection.addIceCandidate(remoteCandidate);
-
+      console.log('test');
       return {
         ...prev,
         [userId]: {
@@ -137,10 +131,6 @@ const ChatDetail = () => {
 
   React.useEffect(() => {
     const onMessageHandler = (message: CandidateMessage | OfferMessage | AnswerMessage, meta: MessageMeta) => {
-      console.group('Receive message');
-      console.log(`meta :`, meta);
-      console.log(`message : `, message);
-      console.groupEnd();
       switch(message.type) {
         case 'offer': {
           acceptOffer({type: message.type, sdp: message.sdp}, meta)
@@ -168,21 +158,13 @@ const ChatDetail = () => {
   React.useLayoutEffect(() => {
     navigator.mediaDevices.getUserMedia({video: true, audio: true})
       .then((mediaStream) => {
-        localMediaStreamRef.current = mediaStream;
-        localVideoRef.current!.srcObject = mediaStream;
+        videoRef.current!.srcObject = mediaStream;
+        mediaStream.getTracks().forEach(track => {
+          userMediaTracks.current.push(track);
+        });
         // 비디오 엘리먼트에 loadedmetadata 이벤트 발생
       });
-  }, [roomId, localVideoRef, localMediaStreamRef, user]);
-
-  React.useEffect(() => {
-    return () => {
-      // 방에서 나갔을 때 녹화, 녹취중인 MediaStreamTrack 들을 종료 시킴
-      if(localMediaStreamRef.current) {
-        const tracks = localMediaStreamRef.current.getTracks();
-        tracks.forEach(track => track.stop());
-      }
-    }
-  }, [roomId, localMediaStreamRef]);
+  }, [roomId, videoRef, userMediaTracks, user]);
 
   React.useEffect(() => {
     const handleRoomDetail = (room: Room) => {
@@ -194,6 +176,7 @@ const ChatDetail = () => {
           room.users.map(({id}) => {
             const peer = new RTCPeerConnection();
             peer.onicecandidate = sendIceCandidate;
+            userMediaTracks.current.forEach(track => peer.addTrack(track));
             
             return [
               id, 
@@ -209,9 +192,8 @@ const ChatDetail = () => {
     const handleJoinUser = (user: User) => {
       const peer = new RTCPeerConnection();
       peer.onicecandidate = sendIceCandidate;
-      localMediaStreamRef.current?.getTracks().forEach((track) => {
-        peer.addTrack(track);
-      });
+      userMediaTracks.current.forEach(track => peer.addTrack(track));
+
       setRoom(prev => ({
         ...prev,
         users: [
@@ -240,7 +222,7 @@ const ChatDetail = () => {
       socket.off('roomDetail', handleRoomDetail);
       socket.off('joinUser', handleJoinUser);
     }
-  }, [setRoom, setOthersPeerMap, setLoading, sendIceCandidate, createOffer, localMediaStreamRef, roomId]);
+  }, [setRoom, setOthersPeerMap, setLoading, sendIceCandidate, createOffer, userMediaTracks, roomId]);
 
   React.useEffect(() => {
     socket.emit('joinRoom', roomId, user);
@@ -265,7 +247,7 @@ const ChatDetail = () => {
       )}
       <FlexSection>
         <Article>
-          <UserVideo user={user as User} ref={localVideoRef} />
+          <UserVideo user={user as User} ref={videoRef} />
         </Article>
         
         {userIds.map((userId) => {
@@ -301,7 +283,7 @@ const Dimd = styled.div`
   align-items: center;
   text-align: center;
   font-size: 16px;
-`
+`;
 
 ChatDetail.displayName = 'ChatDetail';
 export default React.memo(ChatDetail);
