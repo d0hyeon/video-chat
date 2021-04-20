@@ -5,6 +5,7 @@ import { userSelector } from '@src/atoms/user';
 import Profile from '../common/Profile';
 import UserFormPopup from '../popup/UserFormPopup';
 import { User } from '@src/types';
+import { Link } from 'react-router-dom';
 
 const Header = () => {
   const userState = useRecoilValue<User | null>(userSelector);
@@ -33,7 +34,9 @@ const Header = () => {
     <>
       <UserFormPopup open={openUserPopup} onClose={popupCloseHandler}/>
       <StyledHeader>
-        <Logo>CHAT</Logo>
+        <Logo>
+          <Link to="/">CHAT</Link>
+        </Logo>
         {userState && (
           <Profile user={userState} size={35} onClick={profileCliclHandler}/>
         )}
