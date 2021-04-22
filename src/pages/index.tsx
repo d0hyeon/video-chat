@@ -8,6 +8,7 @@ import { H1, P } from '@src/components/styles/text';
 import { Room } from '@src/types';
 import RoomFormPopup from '@src/components/popup/RoomFormPopup';
 import Loading from '@src/components/common/Loading';
+// import IconSrc from '@src/static/images/lock.png';
 
 const socket = io();
 
@@ -56,6 +57,13 @@ const Chatting = () => {
         <RoomInfoBody>
           <p>
             <strong>{room.title}</strong>
+            {room.isPassword && (
+              <RoomIcons>
+                <i>
+                  {/* <img src={IconSrc} alt="lock" /> */}
+                </i>
+              </RoomIcons>
+            )}
           </p>
           <p>{room.description}</p>
         </RoomInfoBody>
@@ -67,7 +75,6 @@ const Chatting = () => {
             [ {room.users.length} / {room.size} ]
           </p>
         </RoomInfoNav>
-        
       </RoomInfo>
     )
   }, []);
@@ -131,16 +138,35 @@ const GridList = styled.div`
     display: block;
     width: 100%;
   }
-`
+`;
 
 const RoomInfoBody = styled.div`
   padding: 20px 25px;
   text-align: left;
 
-  p ~ p {
-    margin-top: 10px;
+  p {
+    position: relative;
+    & ~ p {
+      margin-top: 10px;
+    }
   }
-`
+`;
+
+const RoomIcons = styled.div`
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+
+  i {
+    margin: 0 5px;
+  }
+
+  img {
+    max-width: 10px;
+  }
+`;
 
 const RoomInfoNav = styled.div`
   display: flex;
