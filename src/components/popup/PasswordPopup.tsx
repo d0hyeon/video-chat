@@ -5,6 +5,7 @@ import { useHistory } from 'react-router-dom';
 import Form, { FormItem } from '../form/base';
 import { io } from 'socket.io-client';
 import { ButtonGroup } from './UserFormPopup';
+import { ThemeColor } from '@src/constant/theme';
 
 interface Props extends Pick<ModalProps, 'open'> {
   roomId: string;
@@ -48,13 +49,14 @@ const PasswordPopup: React.FC<Props> = ({open, onSuccess, roomId}) => {
       >
       <PopupBody>
         <PopupHeader>
-          <PopupTitle>채팅 방 생성</PopupTitle>
+          <PopupTitle>비밀번호 입력</PopupTitle>
         </PopupHeader>
         <div>
           <Form onSubmit={formSubmitHandler}>
             <FormItem name="password" title="비밀번호" />
             <ButtonGroup>
-              <RadiusButton type="submit">확인</RadiusButton>
+              <RadiusButton type="button" onClick={closeHandler}>취소</RadiusButton>
+              <RadiusButton type="submit" theme={ThemeColor.ACTIVE}>확인</RadiusButton>
             </ButtonGroup>
           </Form>
         </div>
