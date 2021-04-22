@@ -5,7 +5,7 @@ const STORAGE_KEY = 'CHAT_APP';
 const STORAGE_USER_KEY = 'USER';
 const localStorageUser = localStorage.getItem(`${STORAGE_KEY}/${STORAGE_USER_KEY}`);
 
-export const userState = atom<User | null>({
+export const userState = atom<User>({
   key: 'userState',
   default:  localStorageUser ? JSON.parse(localStorageUser) : null,
 });
