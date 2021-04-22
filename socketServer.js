@@ -31,13 +31,14 @@ module.exports = (app) => {
       }
     })
 
-    socket.on('createRoom', (_room, user) => {
+    socket.on('createRoom', (_room) => {
       const room = {
         ...DEFAULT_ROOM,
         ..._room,
-        users: [user]
+        users: []
       }
       roomsMap[room.id] = room;
+
       if(_room.password) {
         roomPasswordMap[_room.id] = _room.password;
         room.isPassword = true;
@@ -50,7 +51,7 @@ module.exports = (app) => {
         socket.emit('responsePassword', true, roomId);
         return
       }
-      socket.emit('responsePassword', true, roomId);
+      socket.emit('responsePassword', false);
     })
 
     socket.on('joinRoom', (roomId, user) => {
@@ -60,7 +61,7 @@ module.exports = (app) => {
       if(roomsMap[roomId].users.length < roomsMap[roomId].size) {
         socket.join(roomId);
         socket.emit('roomDetail', roomsMap[roomId]);
-        socket.broadcast.to(roomId).emit('joinUser', user);
+        socket.to(roomId).broadcast.emit('joinUser', user);
 
         if(roomsMap[roomId].users.every(({id}) => id !== user.id)) {
           roomsMap[roomId].users = [
@@ -80,6 +81,7 @@ module.exports = (app) => {
         return;
       }
       socket.broadcast.to(roomId).emit('leaveUser', user);
+      console.log('leave', roomId, user.id);
       socket.leave(roomId);
       roomsMap[roomId].users = roomsMap[roomId].users.filter(_user => _user.id !== user.id);
 
