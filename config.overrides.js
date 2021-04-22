@@ -1,6 +1,4 @@
 const path = require('path');
-const { DefinePlugin } = require('webpack');
-const { parsed } = require('dotenv').config();
 
 module.exports = {
   webpack: (config) => {
@@ -26,15 +24,6 @@ module.exports = {
           }
         ]
       },
-      plugins: [
-        ...config.plugins,
-        new DefinePlugin({
-          ...(process.env.MODE === 'development'
-            ? {'process.env.REACT_APP_DUMP_IMAGES': JSON.stringify(parsed.DUMP_IMAGES)}
-            : {}
-          )
-        })
-      ]
     }
   },
   devServer: (configFunction) => {
