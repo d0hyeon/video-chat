@@ -57,6 +57,7 @@ const RoomFormPopup: React.FC<Props> = ({open, closeCallback}) => {
         <Form onSubmit={formSubmitHandler}>
           <FormItem name="title" title="제목" required />
           <FormItem name="description" title="설명" />
+          <FormItem name="password" title="비밀번호" type="password"/>
           
           <ButtonGroup>
             <RadiusButton type="button">
