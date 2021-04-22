@@ -1,6 +1,5 @@
 import React from 'react';
 import styled from '@emotion/styled';
-import { io } from "socket.io-client";
 import { Article, Header, Layout } from '@src/components/styles/common';
 import { H1, P } from '@src/components/styles/text';
 import { useRecoilValue } from 'recoil';
@@ -8,8 +7,7 @@ import { userSelector } from '@src/atoms/user';
 import { Room, User } from '@src/types';
 import UserVideo from '@src/components/common/UserVideo';
 import Loading from '@src/components/common/Loading';
-
-const socket = io();
+import socket from '@src/utils/socket';
 
 enum MessageEnum {
   OFFER = 'offer',
@@ -137,6 +135,7 @@ const ChatRoom: React.FC<Props> = ({roomId, roomInfo, tracks}) => {
   }, [setPeerMap]);
 
   const joinUserHandler = React.useCallback((user: User) => {
+    console.log('join!');
     const peer = new RTCPeerConnection(PEER_CONNECTION_CONFIG);
     peer.onicecandidate = sendIceCandidate;
     tracks.forEach(track => peer.addTrack(track));
@@ -165,14 +164,15 @@ const ChatRoom: React.FC<Props> = ({roomId, roomInfo, tracks}) => {
       delete next[user.id];
 
       return next;
-    })
+    });
   }, [setPeerMap]);
-  
+
   React.useEffect(() => {
     setPeerMap(prev => ({
       ...prev,
       ...Object.fromEntries(
         roomInfo.users.filter(({id}) => id !== user!.id).map(({id}) => {
+          console.log(id);
           const peer = new RTCPeerConnection(PEER_CONNECTION_CONFIG);
           peer.onicecandidate = sendIceCandidate;
           tracks.forEach(track => peer.addTrack(track));
@@ -187,7 +187,16 @@ const ChatRoom: React.FC<Props> = ({roomId, roomInfo, tracks}) => {
         })
       )
     }));
-  }, [roomInfo, tracks, user]);
+
+    return () => {
+      setPeerMap(prev => {
+        Object.values(prev).forEach(({peer}) => {
+          peer.close();
+        })
+        return {};
+      })
+    }
+  }, [roomInfo, tracks, user, setPeerMap]);
 
   React.useLayoutEffect(() => {
     if(videoRef.current) {
@@ -196,11 +205,6 @@ const ChatRoom: React.FC<Props> = ({roomId, roomInfo, tracks}) => {
         mediaStream.addTrack(track);
       });
       videoRef.current.srcObject = mediaStream;
-    }
-    return () => {
-      tracks.forEach(track => {
-        track.stop();
-      });
     }
   }, [videoRef, tracks]);
 
@@ -241,10 +245,7 @@ const ChatRoom: React.FC<Props> = ({roomId, roomInfo, tracks}) => {
   }, [joinUserHandler, leaveUserHandler]);
 
   React.useEffect(() => {
-    const isContainInRoom = roomData.users.some(({id}) => id === user!.id);
-    if(!isContainInRoom) {
-      socket.emit('joinRoom', roomId, user);
-    }     
+    socket.emit('joinRoom', roomId, user);
     return () => {
       socket.emit('leaveRoom', roomId, user);
     }
