@@ -1,16 +1,14 @@
 import React from 'react';
 import styled from '@emotion/styled';
 import { css } from '@emotion/react';
-import { io } from "socket.io-client";
 import { Link } from 'react-router-dom';
 import { Button, Header, Layout, Section } from '@src/components/styles/common';
 import { H1, P } from '@src/components/styles/text';
 import { Room } from '@src/types';
 import RoomFormPopup from '@src/components/popup/RoomFormPopup';
 import Loading from '@src/components/common/Loading';
+import socket from '@src/utils/socket';
 // import IconSrc from '@src/static/images/lock.png';
-
-const socket = io();
 
 const Chatting = () => {
   const [roomList, setRoomList] = React.useState<Room[]>([]);
@@ -25,30 +23,42 @@ const Chatting = () => {
     setLoading(true);
     socket.emit('getRoomList');
 
-    socket.on('roomList', (rooms: Room[]) => {
+    const roomListHandler = (rooms: Room[]) => {
       setRoomList(rooms);
       setLoading(false);
-    });
+    }
 
-    socket.on('createdRoom', (room: Room) => {
+    const createdRoomHandler = (room: Room) => {
       setRoomList(prev => ([
         ...prev,
         room
       ]))
-    });
+    }
 
-    socket.on('updatedRoom', (updateRoom: Room) => {
+    const updatedRoomHandler = (updateRoom: Room) => {
       setRoomList(prev => (
         prev.map(room => room.id === updateRoom.id 
           ? updateRoom 
           : room
         )
       ))
-    });
+    }
 
-    socket.on('deletedRoom', (roomId: string) => {
+    const deletedRoomHandler = (roomId: string) => {
       setRoomList(prev => prev.filter(({id}) => id !== roomId));
-    })
+    }
+
+    socket.on('roomList', roomListHandler);
+    socket.on('createdRoom', createdRoomHandler);
+    socket.on('updatedRoom', updatedRoomHandler);
+    socket.on('deletedRoom', deletedRoomHandler);
+
+    return () => {
+      socket.off('roomList', roomListHandler);
+      socket.off('createdRoom', createdRoomHandler);
+      socket.off('updatedRoom', updatedRoomHandler);
+      socket.off('deletedRoom', deletedRoomHandler);
+    }
   }, [setRoomList, setLoading]);
 
   const roomItemComp = React.useCallback((room: Room) => {
@@ -69,7 +79,7 @@ const Chatting = () => {
         </RoomInfoBody>
         <RoomInfoNav>
           <p>
-            {room.users[0].name} {room.users.length > 1 && `외 ${room.users.length -1}명`}
+            {/* {room.users[0].name} {room.users.length > 1 && `외 ${room.users.length -1}명`} */}
           </p>
           <p>
             [ {room.users.length} / {room.size} ]
