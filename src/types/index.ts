@@ -11,7 +11,7 @@ export type Room = {
   description?: string;
   users: User[];
   size: number;
-  password?: string;
+  isPassword?: boolean;
 }
 
 export interface Rule {
