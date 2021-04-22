@@ -79,7 +79,7 @@ const Chatting = () => {
         </RoomInfoBody>
         <RoomInfoNav>
           <p>
-            {/* {room.users[0].name} {room.users.length > 1 && `외 ${room.users.length -1}명`} */}
+            {room.users[0].name} {room.users.length > 1 && `외 ${room.users.length -1}명`}
           </p>
           <p>
             [ {room.users.length} / {room.size} ]
