@@ -2,13 +2,14 @@ const http = require('http');
 const socketIO = require('socket.io');
 
 const roomsMap = {};
+const roomPasswordMap = {};
 
 const DEFAULT_ROOM = {
   title: '',
   description: '',
   size: 2,
   users: [],
-  password: ''
+  isPassword: false,
 }
 
 module.exports = (app) => {
@@ -21,18 +22,36 @@ module.exports = (app) => {
       socket.broadcast.to(roomId).emit('message', message, rest);
     })
     socket.on('getRoomList', () => {
-      socket.emit('roomList', Object.values(roomsMap));
+      socket.emit('roomList', Object.values(roomsMap).filter(({users}) => !!users.length));
     });
 
-    socket.on('createRoom', (_room) => {
+    socket.on('getRoomDetail', (roomId) => {
+      if(roomsMap[roomId]) {
+        socket.emit('roomDetail', roomsMap[roomId]);
+      }
+    })
+
+    socket.on('createRoom', (_room, user) => {
       const room = {
         ...DEFAULT_ROOM,
-        ..._room
+        ..._room,
+        users: [user]
       }
-      
       roomsMap[room.id] = room;
+      if(_room.password) {
+        roomPasswordMap[_room.id] = _room.password;
+        room.isPassword = true;
+      }
       io.sockets.emit('createdRoom', room);
     });
+
+    socket.on('checkPassword', (roomId, password) => {
+      if(roomPasswordMap[roomId] && roomPasswordMap[roomId] === password) {
+        socket.emit('responsePassword', true, roomId);
+        return
+      }
+      socket.emit('responsePassword', true, roomId);
+    })
 
     socket.on('joinRoom', (roomId, user) => {
       if(!user || !roomsMap[roomId]) {
@@ -42,17 +61,16 @@ module.exports = (app) => {
         socket.join(roomId);
         socket.emit('roomDetail', roomsMap[roomId]);
         socket.broadcast.to(roomId).emit('joinUser', user);
-        roomsMap[roomId].users = [
-          ...roomsMap[roomId].users,
-          user
-        ]
-        io.sockets.emit('updatedRoom', roomsMap[roomId]);
+
+        if(roomsMap[roomId].users.every(({id}) => id !== user.id)) {
+          roomsMap[roomId].users = [
+            ...roomsMap[roomId].users,
+            user
+          ];
+          io.sockets.emit('updatedRoom', roomsMap[roomId]);
+        }
       }
     });
-    
-    socket.on('ready', (user) => {
-      socket.broadcast.emit('readyUser', user);
-    })
 
     socket.on('leaveRoom', (roomId, user) => {
       if(!roomsMap[roomId]) {
