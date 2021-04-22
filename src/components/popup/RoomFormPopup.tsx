@@ -17,6 +17,7 @@ interface Props extends Pick<ModalProps, 'open' | 'closeCallback'> {}
 const RoomFormPopup: React.FC<Props> = ({open, closeCallback}) => {
   const history = useHistory();
   const id = React.useMemo(() => nanoid(), []);
+  const user = useRecoilValue(userSelector);
 
   const formSubmitHandler = React.useCallback((formData) => {
     const size = 2;
@@ -27,8 +28,8 @@ const RoomFormPopup: React.FC<Props> = ({open, closeCallback}) => {
       size,
       password,
       ...formData,
-    });
-  }, [id]);
+    }, user);
+  }, [id, user]);
 
   React.useEffect(() => {
     const createdHandler = (room: Room) => {
