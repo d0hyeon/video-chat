@@ -1,312 +1,77 @@
-import React from 'react';
-import styled from '@emotion/styled';
+import React from 'react'
+import { io } from 'socket.io-client';
 import { useParams } from 'react-router-dom';
-import { io } from "socket.io-client";
-import { Article, Header, Layout } from '@src/components/styles/common';
-import { H1, P } from '@src/components/styles/text';
+import { Room } from '@src/types';
+import Loading from '@src/components/common/Loading';
+import PasswordPopup from '@src/components/popup/PasswordPopup';
+import ChatRoom from './Room';
 import { useRecoilValue } from 'recoil';
 import { userSelector } from '@src/atoms/user';
-import { Room, User } from '@src/types';
-import UserVideo from '@src/components/common/UserVideo';
-import Loading from '@src/components/common/Loading';
-
 const socket = io();
 
-enum MessageEnum {
-  OFFER = 'offer',
-  ANSWER = 'answer',
-  CANDIDATE = 'candidate'
+enum PasswordState {
+  UNKNOWN = 'unknown',
+  PENDING = 'pending',
+  SUCCESS = 'success'
 }
 
-type MessagePayload<T, Payload> = {
-  type: T;
-} & Payload;
-
-type MessageMeta = {
-  userId: string;
-}
-
-type CandidatePayload = {candidate: string; label: number; id: string};
-type DescriptionPayload = {sdp: string;};
-
-type OfferMessage = MessagePayload<MessageEnum.OFFER, DescriptionPayload>;
-type AnswerMessage = MessagePayload<MessageEnum.ANSWER, DescriptionPayload>;
-type CandidateMessage = MessagePayload<MessageEnum.CANDIDATE, CandidatePayload>;
-
-type UserPeerMap = {
-  [key: string]: {
-    peer: RTCPeerConnection,
-    state: 'idle' | 'connect' | 'connected'
-  };
-}
-
-const DEFAULT_ROOM = {
-  id: '',
-  title: '',
-  users: [],
-  size: 2,
-  password: ''
-}
-
-const OFFER_OPTIONS: RTCOfferOptions = {
-  iceRestart: false,
-  offerToReceiveAudio: true,
-  offerToReceiveVideo: true,
-  voiceActivityDetection: true
-}
-
-const ChatDetail = () => {
+const Detail = () => {
   const user = useRecoilValue(userSelector);
-  const [roomData, setRoomData] = React.useState<Room>(DEFAULT_ROOM);
-  const [loading, setLoading] = React.useState<boolean>(false)
-  const [peerMap, setPeerMap] = React.useState<UserPeerMap>({});
-  const { room: roomId } = useParams<{room: string}>();
+  const {room} = useParams<{room: string}>();
+  const [roomInfo, setRoomInfo] = React.useState<Room>();
+  const [passwordState, setPasswordState] = React.useState<PasswordState>(PasswordState.UNKNOWN);
+  const [tracks, setTracks] = React.useState<MediaStreamTrack[]>([]);
+
+  const isContainInRoom = React.useMemo(() => roomInfo?.users.some(({id}) => id === user!.id) ?? true, [roomInfo]);
   
-  const videoRef = React.useRef<HTMLVideoElement>(null);
-  const userMediaTracks: React.MutableRefObject<MediaStreamTrack[]> = React.useRef([]);
-
-  const createOffer = React.useCallback((userId: string) => {
-    setPeerMap(prev => {
-      const {peer} = prev[userId];
-      peer.createOffer(OFFER_OPTIONS)
-        .then((description) => {
-          peer.setLocalDescription(description)
-            .then(() => {
-              socket.emit('message', description, {roomId, userId: userId, sender: user!.id})
-            })
-            .catch(console.error);
-        }).catch(console.error)
-
-      return {
-        ...prev,
-        [userId]: {
-          peer, 
-          state: 'connect'
-        }
-      }
-    })
-  }, [roomId, user, setPeerMap]);
-
-  const createAnswer = React.useCallback((userId: string) => {
-    const peerConnection = peerMap[userId].peer;
-    peerConnection.createAnswer()
-      .then(description => {
-        peerConnection.setLocalDescription(description)
-          .then(() => socket.emit('message', description, {roomId, userId, sender: user!.id}))
-      });
-    
-  }, [peerMap, roomId, user]);
-
-  const sendIceCandidate = React.useCallback((event: RTCPeerConnectionIceEvent) => {
-    if(event.candidate) {
-      socket.emit('message', {
-        type: 'candidate',
-        label: event.candidate.sdpMLineIndex,
-        id: event.candidate.sdpMid,
-        candidate: event.candidate.candidate
-      }, {roomId, sender: user!.id})
-    }
-  }, [roomId, user]);
-
-  const acceptOffer = React.useCallback((description, meta) => {
-    peerMap[meta.sender].peer.setRemoteDescription(description)
-      .then(() => {
-        createAnswer(meta.sender);
-      })
-  }, [peerMap, createAnswer]);
-
-  const acceptAnswer = React.useCallback((description, meta) => {
-    peerMap[meta.sender].peer.setRemoteDescription(description);
-  }, [peerMap]);
-
-  const acceptIceCandidate = React.useCallback((candidate, meta) => {
-    const remoteCandidate = new RTCIceCandidate(candidate);
-    const userId = meta.sender;
-    setPeerMap(prev => {
-      const peerConnection = prev[userId].peer;
-      peerConnection.addIceCandidate(remoteCandidate);
-      console.log('test');
-      return {
-        ...prev,
-        [userId]: {
-          peer: peerConnection,
-          state: 'connected'
-        }
-      }
-    })
-  }, [setPeerMap]);
-
-  const getRoomData = React.useCallback((room: Room) => {
-    const peer = new RTCPeerConnection();
-    peer.onicecandidate = sendIceCandidate;
-    setRoomData(room);
-    setPeerMap(prev => ({
-      ...prev,
-      ...Object.fromEntries(
-        room.users.map(({id}) => {
-          const peer = new RTCPeerConnection();
-          peer.onicecandidate = sendIceCandidate;
-          userMediaTracks.current.forEach(track => peer.addTrack(track));
-          
-          return [
-            id, 
-            {
-              peer,
-              state: 'idle'
-            }
-          ]
-        })
-      )
-    }));
-    setLoading(false);
-  }, [setRoomData, setPeerMap, setLoading, sendIceCandidate, userMediaTracks]);
-
-  const joinUserHandler = React.useCallback((user: User) => {
-    const peer = new RTCPeerConnection();
-    peer.onicecandidate = sendIceCandidate;
-    userMediaTracks.current.forEach(track => peer.addTrack(track));
-    
-    setRoomData(prev => ({
-      ...prev,
-      users: [
-        ...prev.users,
-        user
-      ]
-    }));
-    setPeerMap(prev => ({
-      ...prev,
-      [user.id]: {
-        peer,
-        state: 'idle'
-      }
-    }));
-    createOffer(user.id);
-  }, [setRoomData, setPeerMap, createOffer, sendIceCandidate, userMediaTracks]);
-
-  const leaveUserHandler = React.useCallback((user: User) => {
-    setPeerMap(prev => {
-      const next = {...prev};
-      next[user.id].peer.close();
-      delete next[user.id];
-
-      return next;
-    })
-  }, [setPeerMap]);
+  const successPwHandler = React.useCallback(() => {
+    setPasswordState(PasswordState.SUCCESS);
+  }, [setPasswordState]);
 
   React.useEffect(() => {
-    const onMessageHandler = (message: CandidateMessage | OfferMessage | AnswerMessage, meta: MessageMeta) => {
-      switch(message.type) {
-        case 'offer': {
-          acceptOffer({type: message.type, sdp: message.sdp}, meta)
-          break;
-        }
-        case 'answer': {
-          acceptAnswer({type: message.type, sdp: message.sdp}, meta);
-          break;
-        }
-        case 'candidate': {
-          acceptIceCandidate({
-            sdpMLineIndex: message.label,
-            candidate: message.candidate
-          }, meta);
-          break;
-        }
-      }
-    }
-    socket.on('message', onMessageHandler);
-    return () => {
-      socket.off('message', onMessageHandler);
-    }
-  }, [acceptOffer, acceptAnswer, acceptIceCandidate]);
-
-  React.useEffect(() => {
-    setLoading(true);
-    socket.on('roomDetail', getRoomData);
-    socket.on('joinUser', joinUserHandler);
-    socket.on('leaveUser', leaveUserHandler);
-
-    return () => {
-      socket.off('roomDetail', getRoomData);
-      socket.off('joinUser', getRoomData);
-      socket.off('leaveUser', leaveUserHandler);
-    }
-  }, [getRoomData, joinUserHandler, leaveUserHandler, setLoading]);
-
-  React.useLayoutEffect(() => {
-    socket.emit('joinRoom', roomId, user);
     navigator.mediaDevices.getUserMedia({video: true, audio: true})
       .then((mediaStream) => {
-        videoRef.current!.srcObject = mediaStream;
-        mediaStream.getTracks().forEach(track => {
-          userMediaTracks.current.push(track);
-        });
-        // 비디오 엘리먼트에 loadedmetadata 이벤트 발생
+        setTracks(mediaStream.getTracks());
       });
+  }, [setTracks]);
+
+  React.useEffect(() => {
+    const roomDetailHandler = (room: Room) => {
+      setRoomInfo(room);
+    }
+    socket.emit('getRoomDetail', room);
+    socket.on('roomDetail', roomDetailHandler);
 
     return () => {
-      socket.emit('leaveRoom', roomId, user);
-      userMediaTracks.current.forEach((track) => track.stop());
+      socket.off('roomDetail', roomDetailHandler);
     }
-  }, [roomId, user, videoRef, userMediaTracks]);
+  }, [room, setRoomInfo]);
 
-  const userIds = React.useMemo(() => Object.keys(peerMap), [peerMap]);
+  React.useEffect(() => {
+    if(roomInfo && roomInfo.isPassword) {
+      if(!isContainInRoom) {
+        setPasswordState(PasswordState.PENDING);
+        return;
+      }
+    }
+    setPasswordState(PasswordState.SUCCESS);
+  }, [roomInfo, isContainInRoom, setPasswordState]);
+
 
   return (
-    <Layout>
-      {!loading && (
-        <>
-          <Header>
-            <H1>{roomData.title}</H1>
-            {roomData.description && (
-              <P>{roomData.description}</P>
-            )}
-          </Header>
-        </>
+    passwordState === PasswordState.SUCCESS && 
+    tracks.length && 
+    roomInfo
+  ) ? (
+    <ChatRoom roomId={room} roomInfo={roomInfo} tracks={tracks} />
+  ) : (
+    <>
+      {roomInfo?.isPassword && (
+        <PasswordPopup roomId={room} open={passwordState === PasswordState.PENDING} onSuccess={successPwHandler} />
       )}
-      <FlexSection>
-        <Article>
-          <UserVideo user={user as User} ref={videoRef} />
-        </Article>
-        
-        {userIds.map((userId) => {
-          const user = roomData.users.filter(({id}) => id === userId)[0];
-          const {peer, state} = peerMap[userId];
-          
-          return (
-            <Article key={userId}>
-              <UserVideo user={user} peer={peer}>
-                {(state === 'connect' || state === 'idle') && (
-                  <Dimd>
-                    <Loading />
-                  </Dimd>
-                )}
-              </UserVideo>
-            </Article>
-          )
-        })}
-      </FlexSection>
-    </Layout>
+      <Loading />
+    </>
   )
-};
+}
 
-const FlexSection = styled.section`
-  display: flex;
-  align-items: center;
-`;
-
-const Dimd = styled.div`
-  position: absolute;
-  top: 0;
-  left: 0;
-  display: flex;
-  width: 100%;
-  height: calc(100% - 50px);
-  background-color: rgba(0, 0, 0, 0.5);
-  color: #fff;
-  align-items: center;
-  text-align: center;
-  font-size: 16px;
-`;
-
-ChatDetail.displayName = 'ChatDetail';
-export default React.memo(ChatDetail);
+export default Detail;
