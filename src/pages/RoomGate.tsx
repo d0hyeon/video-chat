@@ -20,7 +20,6 @@ const RoomGate: React.FC<Props> = ({onSuccess}) => {
   const {room} = useParams<{room: string}>();
   const [roomInfo, setRoomInfo] = React.useState<Room>();
   const [passwordState, setPasswordState] = React.useState<PasswordState>(PasswordState.UNKNOWN);
-  const [tracks, setTracks] = React.useState<MediaStreamTrack[]>([]);
   
   const successPwHandler = React.useCallback(() => {
     setPasswordState(PasswordState.SUCCESS);
@@ -29,20 +28,6 @@ const RoomGate: React.FC<Props> = ({onSuccess}) => {
   const roomDetailHandler = React.useCallback((room: Room) => {
     setRoomInfo(room);
   }, [setRoomInfo]);
-
-  React.useEffect(() => {
-    navigator.mediaDevices.getUserMedia({video: true, audio: true})
-      .then((mediaStream) => {
-        setTracks(mediaStream.getTracks());
-      });
-
-    return () => {
-      setTracks(tracks => {
-        tracks.forEach(track => track.stop());
-        return [];
-      })
-    }
-  }, [setTracks]);
 
 
   React.useEffect(() => {
@@ -65,12 +50,10 @@ const RoomGate: React.FC<Props> = ({onSuccess}) => {
   }, [roomInfo, setPasswordState]);
 
   React.useEffect(() => {
-    if(passwordState === PasswordState.SUCCESS && 
-      tracks.length && 
-      roomInfo) {
+    if(passwordState === PasswordState.SUCCESS && roomInfo) {
         onSuccess(roomInfo);
       } 
-  }, [passwordState, tracks, roomInfo, roomDetailHandler]);
+  }, [passwordState, roomInfo, roomDetailHandler]);
 
   return (
     <>
