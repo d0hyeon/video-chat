@@ -1,15 +1,24 @@
 
-export type User = {
+export interface User {
   id: string;
   name: string;
   message: string;
 }
 
-export type Room = {
+export interface ChatOption {
+  video: boolean;
+  audio: boolean;
+}
+
+export interface UserWithInRoom extends User {
+  option: ChatOption
+}
+
+export interface Room {
   id: string;
   title: string;
   description?: string;
-  users: User[];
+  users: UserWithInRoom[];
   size: number;
   isPassword?: boolean;
 }

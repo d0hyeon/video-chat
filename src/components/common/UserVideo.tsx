@@ -1,36 +1,71 @@
 import React from 'react';
 import styled from '@emotion/styled';
-import { User } from '@src/types';
+import { ChatOption, User } from '@src/types';
 import Profile from './Profile';
-
 interface Props {
   user?: User;
   peer?: RTCPeerConnection;
+  tracks?: MediaStreamTrack[];
+  options?: ChatOption;
   children?: React.ReactNode;
+}
+
+export const DEFAULT_VIDEO_OPTIONS: ChatOption = {
+  audio: true,
+  video: true
 }
 
 const UserVideo = React.forwardRef<any, Props>(({
   user,
   peer,
+  options: _options = DEFAULT_VIDEO_OPTIONS,
+  tracks: _tracks,
   children
 }, ref) => {
   const videoRef = React.useRef<HTMLVideoElement>(null);
-  React.useImperativeHandle(ref, () => videoRef.current);
+  const [tracks, setTracks] = React.useState<MediaStreamTrack[]>(_tracks ?? []);
+  const [option, setOption] = React.useState<ChatOption>(DEFAULT_VIDEO_OPTIONS);
+  const tracksRef = React.useRef<MediaStreamTrack[]>(tracks);
+
+  React.useImperativeHandle(ref, () => videoRef.current, [videoRef]);
   React.useEffect(() => {
-    const addTrackHandler = (event: MediaStreamTrackEvent) => {
-      if(videoRef.current) {
-        const mediaStream = (videoRef.current.srcObject as MediaStream | undefined) ?? new MediaStream();
-        mediaStream.addTrack(event.track);
-        videoRef.current.srcObject = mediaStream;
-      }
+    const handleTrack = (event: MediaStreamTrackEvent) => {
+      setTracks(prev => ([...prev, event.track]));
     }
     if(peer) {
-      peer.addEventListener('track', addTrackHandler);
+      peer.addEventListener('track', handleTrack);
       return () => {
-        peer.removeEventListener('track', addTrackHandler);
+        peer.removeEventListener('track', handleTrack);
       }
     }
-  }, [peer, videoRef]);
+  }, [peer, videoRef, setTracks]);
+
+  React.useEffect(() => {
+    if(videoRef.current) {
+      const mediaStream = new MediaStream();
+      tracks.forEach(track => {
+        console.log(track);
+        mediaStream.addTrack(track);
+      });
+      videoRef.current.srcObject = mediaStream;
+    }
+    tracksRef.current = tracks;
+  }, [tracks, videoRef, tracksRef]);
+
+  React.useEffect(() => {
+    setOption(_options);
+  }, [_options]);
+
+  React.useEffect(() => {
+    tracksRef.current.map((track) => {
+      if(
+        (track.kind === 'audio' && track.enabled !== option.audio) ||
+        (track.kind === 'video' && track.enabled !== option.video)
+      ) {
+        track.enabled = !track.enabled
+      }
+    })
+  }, [option, tracksRef]);
 
   return (
     <Wrapper>
