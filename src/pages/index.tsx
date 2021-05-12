@@ -77,14 +77,16 @@ const Chatting = () => {
           </p>
           <p>{room.description}</p>
         </RoomInfoBody>
-        <RoomInfoNav>
-          <p>
-            {room.users[0].name} {room.users.length > 1 && `외 ${room.users.length -1}명`}
-          </p>
-          <p>
-            [ {room.users.length} / {room.size} ]
-          </p>
-        </RoomInfoNav>
+        {room.users[0] && (
+          <RoomInfoNav>
+            <p>
+              {room.users[0].name} {room.users.length > 1 && `외 ${room.users.length -1}명`}
+            </p>
+            <p>
+              [ {room.users.length} / {room.size} ]
+            </p>
+          </RoomInfoNav>
+        )}
       </RoomInfo>
     )
   }, []);
