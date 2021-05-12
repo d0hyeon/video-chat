@@ -8,12 +8,17 @@ import { ChatOption, Room, User, UserWithInRoom } from '@src/types';
 import UserVideo, { DEFAULT_VIDEO_OPTIONS } from '@src/components/common/UserVideo';
 import Loading from '@src/components/common/Loading';
 import socket from '@src/utils/socket';
+import { useHistory } from 'react-router';
 
-enum MessageEnum {
+enum MessageTypeEnum {
   OFFER = 'offer',
   ANSWER = 'answer',
   CANDIDATE = 'candidate',
   UPDATE = 'update'
+}
+
+enum ErrorTypeEnum {
+  JOIN = 'join'
 }
 
 type MessagePayload<T, Payload> = {
@@ -28,10 +33,10 @@ type CandidatePayload = {candidate: string; label: number; id: string};
 type DescriptionPayload = {sdp: string;};
 type UpdatePayload = {option: ChatOption};
 
-type OfferMessage = MessagePayload<MessageEnum.OFFER, DescriptionPayload>;
-type AnswerMessage = MessagePayload<MessageEnum.ANSWER, DescriptionPayload>;
-type CandidateMessage = MessagePayload<MessageEnum.CANDIDATE, CandidatePayload>;
-type UpdateMessage = MessagePayload<MessageEnum.UPDATE, UpdatePayload>;
+type OfferMessage = MessagePayload<MessageTypeEnum.OFFER, DescriptionPayload>;
+type AnswerMessage = MessagePayload<MessageTypeEnum.ANSWER, DescriptionPayload>;
+type CandidateMessage = MessagePayload<MessageTypeEnum.CANDIDATE, CandidatePayload>;
+type UpdateMessage = MessagePayload<MessageTypeEnum.UPDATE, UpdatePayload>;
 
 type UserPeerMap = {
   [key: string]: {
@@ -63,6 +68,7 @@ interface Props {
 
 const ChatRoom: React.FC<Props> = ({roomId, roomInfo, tracks}) => {
   const user = useRecoilValue(userSelector);
+  const history = useHistory();
   const [roomData, setRoomData] = React.useState<Room>(roomInfo);
   const [peerMap, setPeerMap] = React.useState<UserPeerMap>({});
   const [options, setOptions] = React.useState<ChatOption>(DEFAULT_VIDEO_OPTIONS);
@@ -152,7 +158,7 @@ const ChatRoom: React.FC<Props> = ({roomId, roomInfo, tracks}) => {
 
   const sendUpdateOption = React.useCallback((option) => {
     socket.emit('message', {
-      type: MessageEnum.UPDATE,
+      type: MessageTypeEnum.UPDATE,
       payload: option
     }, {roomId, sender: user!.id});
   }, [roomId, user]);
@@ -274,6 +280,27 @@ const ChatRoom: React.FC<Props> = ({roomId, roomInfo, tracks}) => {
       socket.off('leaveUser', leaveUserHandler);
     }
   }, [joinUserHandler, leaveUserHandler]);
+
+  const handleJoinError = React.useCallback((message) => {
+    alert(message);
+    history.replace('/');
+  }, [history]);
+
+  const handleSocketError = React.useCallback(({type, message}) => {
+    switch(type as ErrorTypeEnum) {
+      case ErrorTypeEnum.JOIN: handleJoinError(message); break;
+    }
+  }, [handleJoinError]);
+
+
+  React.useEffect(() => {
+    socket.on('error', handleSocketError);
+
+    return () => {
+      socket.off('error', handleSocketError);
+    }
+  }, [handleSocketError]);
+
 
   React.useEffect(() => {
     socket.emit('joinRoom', roomId, user);
