@@ -82,7 +82,17 @@ module.exports = (app) => {
             {...user, option: DEFAULT_USER_OPTION_WITHIN_ROOM}
           ];
           io.sockets.emit('updatedRoom', roomsMap[roomId]);
+        } else {
+          socket.emit('error', {
+            type: 'join',
+            message: '이미 참여중인 방입니다. \n다른 브라우저나 탭을 확인해주세요.'
+          })  
         }
+      } else {
+        socket.emit('error', {
+          type: 'join',
+          message: '이미 사용자가 가득 찬 방입니다.'
+        })
       }
     });
 
