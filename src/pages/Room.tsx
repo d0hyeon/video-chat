@@ -1,18 +1,19 @@
 import React from 'react';
 import styled from '@emotion/styled';
-import { Article, Header, Layout } from '@src/components/styles/common';
+import { Article, Button, Header, Layout } from '@src/components/styles/common';
 import { H1, P } from '@src/components/styles/text';
 import { useRecoilValue } from 'recoil';
 import { userSelector } from '@src/atoms/user';
-import { Room, User } from '@src/types';
-import UserVideo from '@src/components/common/UserVideo';
+import { ChatOption, Room, User, UserWithInRoom } from '@src/types';
+import UserVideo, { DEFAULT_VIDEO_OPTIONS } from '@src/components/common/UserVideo';
 import Loading from '@src/components/common/Loading';
 import socket from '@src/utils/socket';
 
 enum MessageEnum {
   OFFER = 'offer',
   ANSWER = 'answer',
-  CANDIDATE = 'candidate'
+  CANDIDATE = 'candidate',
+  UPDATE = 'update'
 }
 
 type MessagePayload<T, Payload> = {
@@ -25,15 +26,18 @@ type MessageMeta = {
 
 type CandidatePayload = {candidate: string; label: number; id: string};
 type DescriptionPayload = {sdp: string;};
+type UpdatePayload = {option: ChatOption};
 
 type OfferMessage = MessagePayload<MessageEnum.OFFER, DescriptionPayload>;
 type AnswerMessage = MessagePayload<MessageEnum.ANSWER, DescriptionPayload>;
 type CandidateMessage = MessagePayload<MessageEnum.CANDIDATE, CandidatePayload>;
+type UpdateMessage = MessagePayload<MessageEnum.UPDATE, UpdatePayload>;
 
 type UserPeerMap = {
   [key: string]: {
     peer: RTCPeerConnection,
-    state: 'idle' | 'connect' | 'connected'
+    state: 'idle' | 'connecting' | 'connected',
+    option: ChatOption
   };
 }
 
@@ -61,7 +65,7 @@ const ChatRoom: React.FC<Props> = ({roomId, roomInfo, tracks}) => {
   const user = useRecoilValue(userSelector);
   const [roomData, setRoomData] = React.useState<Room>(roomInfo);
   const [peerMap, setPeerMap] = React.useState<UserPeerMap>({});
-  const videoRef = React.useRef<HTMLVideoElement>(null);
+  const [options, setOptions] = React.useState<ChatOption>(DEFAULT_VIDEO_OPTIONS);
   
   const createOffer = React.useCallback((userId: string) => {
     setPeerMap(prev => {
@@ -78,8 +82,9 @@ const ChatRoom: React.FC<Props> = ({roomId, roomInfo, tracks}) => {
       return {
         ...prev,
         [userId]: {
+          ...prev[userId],
           peer, 
-          state: 'connect'
+          state: 'connecting',
         }
       }
     })
@@ -127,6 +132,7 @@ const ChatRoom: React.FC<Props> = ({roomId, roomInfo, tracks}) => {
       return {
         ...prev,
         [userId]: {
+          ...prev[userId],
           peer: peerConnection,
           state: 'connected'
         }
@@ -134,7 +140,24 @@ const ChatRoom: React.FC<Props> = ({roomId, roomInfo, tracks}) => {
     })
   }, [setPeerMap]);
 
-  const joinUserHandler = React.useCallback((user: User) => {
+  const updateOption = React.useCallback(({payload}, meta) => {
+    setPeerMap(prev => ({
+      ...prev,
+      [meta.sender]: {
+        ...prev[meta.sender],
+        payload
+      }
+    }));
+  }, [setOptions, setPeerMap]);
+
+  const sendUpdateOption = React.useCallback((option) => {
+    socket.emit('message', {
+      type: MessageEnum.UPDATE,
+      payload: option
+    }, {roomId, sender: user!.id});
+  }, [roomId, user]);
+
+  const joinUserHandler = React.useCallback((user: UserWithInRoom) => {
     console.log('join!');
     const peer = new RTCPeerConnection(PEER_CONNECTION_CONFIG);
     peer.onicecandidate = sendIceCandidate;
@@ -151,7 +174,8 @@ const ChatRoom: React.FC<Props> = ({roomId, roomInfo, tracks}) => {
       ...prev,
       [user.id]: {
         peer,
-        state: 'idle'
+        state: 'idle',
+        option: DEFAULT_VIDEO_OPTIONS
       }
     }));
     createOffer(user.id);
@@ -167,12 +191,25 @@ const ChatRoom: React.FC<Props> = ({roomId, roomInfo, tracks}) => {
     });
   }, [setPeerMap]);
 
+  const handleClickAudio = React.useCallback(() => {
+    setOptions(prev => ({
+      ...prev,
+      audio: !prev.audio
+    }))
+  }, [setOptions]);
+
+  const handleClickVideo = React.useCallback(() => {
+    setOptions(prev => ({
+      ...prev,
+      video: !prev.video
+    }))
+  }, [setOptions]);
+
   React.useEffect(() => {
     setPeerMap(prev => ({
       ...prev,
       ...Object.fromEntries(
-        roomInfo.users.filter(({id}) => id !== user!.id).map(({id}) => {
-          console.log(id);
+        roomInfo.users.filter(({id}) => id !== user!.id).map(({id, option}) => {
           const peer = new RTCPeerConnection(PEER_CONNECTION_CONFIG);
           peer.onicecandidate = sendIceCandidate;
           tracks.forEach(track => peer.addTrack(track));
@@ -181,7 +218,8 @@ const ChatRoom: React.FC<Props> = ({roomId, roomInfo, tracks}) => {
             id, 
             {
               peer,
-              state: 'idle'
+              state: 'idle',
+              option
             }
           ]
         })
@@ -196,20 +234,10 @@ const ChatRoom: React.FC<Props> = ({roomId, roomInfo, tracks}) => {
         return {};
       })
     }
-  }, [roomInfo, tracks, user, setPeerMap]);
-
-  React.useLayoutEffect(() => {
-    if(videoRef.current) {
-      const mediaStream = new MediaStream();
-      tracks.forEach(track => {
-        mediaStream.addTrack(track);
-      });
-      videoRef.current.srcObject = mediaStream;
-    }
-  }, [videoRef, tracks]);
+  }, [roomInfo, tracks, user, setPeerMap, sendIceCandidate]);
 
   React.useEffect(() => {
-    const onMessageHandler = (message: CandidateMessage | OfferMessage | AnswerMessage, meta: MessageMeta) => {
+    const onMessageHandler = (message: CandidateMessage | OfferMessage | AnswerMessage | UpdateMessage, meta: MessageMeta) => {
       switch(message.type) {
         case 'offer': {
           acceptOffer({type: message.type, sdp: message.sdp}, meta)
@@ -226,13 +254,16 @@ const ChatRoom: React.FC<Props> = ({roomId, roomInfo, tracks}) => {
           }, meta);
           break;
         }
+        case 'update': {
+          updateOption(message, meta);
+        }
       }
     }
     socket.on('message', onMessageHandler);
     return () => {
       socket.off('message', onMessageHandler);
     }
-  }, [acceptOffer, acceptAnswer, acceptIceCandidate]);
+  }, [acceptOffer, acceptAnswer, updateOption, acceptIceCandidate]);
 
   React.useEffect(() => {
     socket.on('joinUser', joinUserHandler);
@@ -251,6 +282,10 @@ const ChatRoom: React.FC<Props> = ({roomId, roomInfo, tracks}) => {
     }
   }, [user, roomId, roomInfo]);
 
+  React.useEffect(() => {
+    sendUpdateOption(options);
+  }, [options, sendUpdateOption]);
+
   const userIds = React.useMemo(() => Object.keys(peerMap), [peerMap]);
 
   return (
@@ -263,17 +298,25 @@ const ChatRoom: React.FC<Props> = ({roomId, roomInfo, tracks}) => {
       </Header>
       <FlexSection>
         <Article>
-          <UserVideo user={user as User} ref={videoRef} />
+          <UserVideo user={user as User} tracks={tracks} options={options} />
+          <OptionWrapper>
+            <Button onClick={handleClickAudio}>
+              오디오 {options.audio ? 'On' : 'Off'}
+            </Button>
+            <Button onClick={handleClickVideo}>
+              비디오 {options.video ? 'On' : 'Off'}
+            </Button>
+          </OptionWrapper>
         </Article>
         
         {userIds.map((userId) => {
           const user = roomData.users.filter(({id}) => id === userId)[0];
-          const {peer, state} = peerMap[userId];
+          const {peer, state, option} = peerMap[userId];
           
           return (
             <Article key={userId}>
-              <UserVideo user={user} peer={peer}>
-                {(state === 'connect' || state === 'idle') && (
+              <UserVideo user={user} peer={peer} options={option}>
+                {(state === 'connecting' || state === 'idle') && (
                   <Dimd>
                     <Loading />
                   </Dimd>
@@ -304,6 +347,14 @@ const Dimd = styled.div`
   align-items: center;
   text-align: center;
   font-size: 16px;
+`;
+
+const OptionWrapper = styled.div`
+  margin-top: 10px;
+  text-align: center;
+  button {
+    margin: 0 5px;
+  }
 `;
 
 ChatRoom.displayName = 'ChatRoom';
