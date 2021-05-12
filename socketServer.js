@@ -12,6 +12,11 @@ const DEFAULT_ROOM = {
   isPassword: false,
 }
 
+const DEFAULT_USER_OPTION_WITHIN_ROOM = {
+  video: true,
+  audio: true
+}
+
 module.exports = (app) => {
   const server = http.Server(app);
   const io = socketIO(server);
@@ -19,6 +24,14 @@ module.exports = (app) => {
   io.on('connection', (socket) => {
     socket.on('message', (message, meta) => {
       const {roomId, ...rest} = meta;
+      if(message.type === 'update' && roomsMap[meta.roomId]) {
+        roomsMap[meta.roomId].users.map((user) => {
+          if(user.id === meta.sender) {
+            return {...user, option: message.payload}
+          }
+          return user;
+        })
+      }
       socket.broadcast.to(roomId).emit('message', message, rest);
     })
     socket.on('getRoomList', () => {
@@ -66,7 +79,7 @@ module.exports = (app) => {
         if(roomsMap[roomId].users.every(({id}) => id !== user.id)) {
           roomsMap[roomId].users = [
             ...roomsMap[roomId].users,
-            user
+            {...user, option: DEFAULT_USER_OPTION_WITHIN_ROOM}
           ];
           io.sockets.emit('updatedRoom', roomsMap[roomId]);
         }
